@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_DB: happy, POSTGRES_USER: happy, POSTGRES_PASSWORD: happy }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U happy" --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://happy:happy@localhost:5432/happy
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt }
+      - run: pip install -r requirements.txt
+      - run: python manage.py makemigrations --check --dry-run
+      # Seed + migrations from a clean database
+      - run: python manage.py migrate --noinput && python manage.py seed_catalog
+      - run: python manage.py spectacular --file schema.yml --validate --fail-on-warn
+      - run: python manage.py test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+  e2e:
+    # Production build against a real API, then Playwright + axe at 1280 and 390.
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_DB: happy, POSTGRES_USER: happy, POSTGRES_PASSWORD: happy }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U happy" --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://happy:happy@localhost:5432/happy
+      ALLOWED_ORIGINS: http://127.0.0.1:3100
+      PUBLIC_BASE_URL: http://127.0.0.1:8000
+      API_BASE_URL: http://127.0.0.1:8000/api/v1
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - name: Start API
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          python manage.py migrate --noinput && python manage.py seed_catalog
+          python manage.py runserver 127.0.0.1:8000 --noreload &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/api/v1/health && break; sleep 1; done
+      - name: Build site
+        working-directory: frontend
+        run: npm ci && npm run build
+      - name: Playwright + axe
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium && npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-traces, path: frontend/test-results }

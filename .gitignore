@@ -1,0 +1,21 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+backend/db.sqlite3
+backend/media/
+backend/staticfiles/
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/next-env.d.ts
+frontend/tsconfig.tsbuildinfo
+frontend/test-results/
+frontend/playwright-report/
+
+# Env
+.env
+.env.local
+*.env
+!.env.example
