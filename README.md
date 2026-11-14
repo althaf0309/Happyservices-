@@ -75,4 +75,6 @@ On Windows the e2e tests use your installed Edge (`PW_CHANNEL=msedge`); elsewher
 - Cron: `python manage.py purge_spam` daily (deletes spam bookings older than 30 days).
 - Monitoring: set `SENTRY_DSN`; uptime-ping `/api/v1/health`.
 
+Step-by-step AWS setup (EC2, Elastic IP, DNS, HTTPS, backups): [docs/DEPLOY-AWS.md](docs/DEPLOY-AWS.md).
+
 See [docs/HANDOFF.md](docs/HANDOFF.md) for the spec, what's implemented, and the open client items.
